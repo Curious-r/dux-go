@@ -43,6 +43,19 @@ func (f nameFilter) passes(e Entry) bool {
 	return false
 }
 
+func hiddenCount(entries []Entry, includeHidden bool, filters nameFilter) int {
+	if includeHidden {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if e.Hidden && filters.passes(e) {
+			count++
+		}
+	}
+	return count
+}
+
 func filterView(entries []Entry, includeHidden bool, filters nameFilter) []Entry {
 	if includeHidden && len(filters) == 0 {
 		return entries

@@ -296,3 +296,76 @@ func TestWatchEnrichmentNeverReadsTheLiveListing(t *testing.T) {
 	resort(w)
 	svc.pool.drain()
 }
+
+func TestWatchTypeSortFollowsSniffedMimes(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes"), []byte("plain words\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "shot.png"), []byte("\x89PNG\r\n\x1a\n"), 0o644))
+	opts := ListOptions{Sort: SortSpec{Key: SortType, DirsFirst: true}}
+
+	bus, _, w := openFakeWatch(t, root, opts)
+	page, seq := w.page(opts)
+	assert.Equal(t, []string{"shot.png", "notes"}, namesOf(page.Entries), "the first page is sorted by the sniffed type")
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "later"), []byte("more words\n"), 0o644))
+	w.flush([]string{"later"})
+	w.svc.pool.drain()
+
+	replayed := namesOf(page.Entries)
+	for _, event := range bus.snapshot() {
+		if event.Seq <= seq || event.Kind != "batch" {
+			continue
+		}
+		replayed = applyLikeClient(t, replayed, event)
+	}
+	assert.Equal(t, viewNames(w, opts), replayed)
+	assert.Equal(t, []string{"shot.png", "later", "notes"}, replayed)
+}
+
+func TestWatchCountsTheHiddenEntriesItLeavesOut(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{".env", ".notes.txt", "a.txt", "b.png", "listed-hidden"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o644))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("listed-hidden\n"), 0o644))
+	txtOnly, err := parseFilters([]string{"*.txt"})
+	require.NoError(t, err)
+
+	opts := ListOptions{Sort: nameSort()}
+	bus, _, w := openFakeWatch(t, root, opts)
+	page, seq := w.page(opts)
+	assert.Equal(t, 4, page.Hidden, ".env, .hidden, .notes.txt and the name listed in .hidden")
+	assert.Equal(t, []string{"a.txt", "b.png"}, namesOf(page.Entries))
+
+	shown, _ := w.page(ListOptions{Sort: nameSort(), IncludeHidden: true})
+	assert.Zero(t, shown.Hidden)
+	filtered, _ := w.page(ListOptions{Sort: nameSort(), Filters: txtOnly})
+	assert.Equal(t, 1, filtered.Hidden, "only .notes.txt passes the filter")
+
+	_, seq = w.page(opts)
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".cache"), nil, 0o644))
+	w.flush([]string{".cache"})
+	changes := flushedBatch(t, bus, seq+1)
+	assert.Empty(t, changes.Added)
+	assert.Empty(t, changes.Removed)
+	require.NotNil(t, changes.Hidden)
+	assert.Equal(t, 5, *changes.Hidden)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "c.txt"), nil, 0o644))
+	w.flush([]string{"c.txt"})
+	changes = flushedBatch(t, bus, seq+2)
+	assert.Len(t, changes.Added, 1)
+	assert.Nil(t, changes.Hidden, "an unchanged hidden count is left out")
+}
+
+func TestListCountsHiddenEntries(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{".env", "a.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o644))
+	}
+	svc := newTestService(t)
+	page, err := svc.list(root, ListOptions{Sort: nameSort()})
+	require.NoError(t, err)
+	assert.Equal(t, 1, page.Hidden)
+	assert.Equal(t, 1, page.Total)
+}

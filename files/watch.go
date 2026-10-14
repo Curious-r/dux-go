@@ -54,6 +54,7 @@ type batch struct {
 	Changed    []Entry  `json:"changed,omitempty"`
 	Removed    []string `json:"removed,omitempty"`
 	Thumbnails []Entry  `json:"thumbnails,omitempty"`
+	Hidden     *int     `json:"hidden,omitempty"`
 }
 
 type watch struct {
@@ -74,6 +75,8 @@ type watch struct {
 	includeHidden bool
 	filters       nameFilter
 	seq           int
+	hidden        int
+	misplaced     bool
 	subscribed    bool
 	pending       []batch
 	dropped       bool
@@ -231,7 +234,12 @@ func (w *watch) flush(names []string) {
 			fresh = append(fresh, entry)
 		}
 	}
-	w.publishLocked(w.diff(before, touched))
+	changes := w.diff(before, touched)
+	if hidden := hiddenCount(w.entries, w.includeHidden, w.filters); hidden != w.hidden {
+		w.hidden = hidden
+		changes.Hidden = &hidden
+	}
+	w.publishLocked(changes)
 	w.mu.Unlock()
 
 	w.enrich(unenriched(fresh))
@@ -350,6 +358,7 @@ func (w *watch) enrich(pending []Entry) <-chan struct{} {
 		w.svc.pool.submit(func() {
 			w.enrichChunk(chunk)
 			if remaining.Add(-1) == 0 {
+				w.settleOrder()
 				close(done)
 			}
 		})
@@ -397,7 +406,13 @@ func (w *watch) applyChanged(changed []Entry, kind string) {
 		if index < 0 || w.entries[index].MtimeMs != e.MtimeMs {
 			continue
 		}
+		if kind == "thumbnails" {
+			w.entries[index].Thumbnail = e.Thumbnail
+			applied = append(applied, w.entries[index])
+			continue
+		}
 		e.nameKey = w.entries[index].nameKey
+		w.misplaced = w.misplaced || (w.spec.Key == SortType && w.entries[index].Mime != e.Mime)
 		w.entries[index] = e
 		applied = append(applied, e)
 	}
@@ -414,6 +429,29 @@ func (w *watch) applyChanged(changed []Entry, kind string) {
 	}
 }
 
+func (w *watch) settleOrder() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.misplaced || w.closed() {
+		return
+	}
+	w.misplaced = false
+
+	before := namesOf(w.view())
+	sortEntries(w.entries, w.spec)
+	after := w.view()
+	moved := map[string]bool{}
+	for i, e := range after {
+		if i >= len(before) || before[i] != e.Name {
+			moved[e.Name] = true
+		}
+	}
+	if len(moved) == 0 {
+		return
+	}
+	w.publishLocked(w.diff(before, moved))
+}
+
 // Closed first so a client told "gone" can no longer resolve the watch id.
 func (w *watch) publishGone() {
 	w.close()
@@ -423,7 +461,7 @@ func (w *watch) publishGone() {
 }
 
 func (w *watch) publishLocked(payload batch) {
-	if payload.Kind == "batch" && len(payload.Added)+len(payload.Changed)+len(payload.Removed) == 0 {
+	if payload.Kind == "batch" && len(payload.Added)+len(payload.Changed)+len(payload.Removed) == 0 && payload.Hidden == nil {
 		return
 	}
 	w.seq++
@@ -472,14 +510,17 @@ func (w *watch) page(opts ListOptions) (Page, int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if opts.Sort != w.spec {
+	if opts.Sort != w.spec || w.misplaced {
 		w.spec = opts.Sort
+		w.misplaced = false
 		sortEntries(w.entries, w.spec)
 	}
 	w.includeHidden = opts.IncludeHidden
 	w.filters = opts.Filters
+	w.hidden = hiddenCount(w.entries, w.includeHidden, w.filters)
 	page := pageOf(w.view(), opts.Cursor, opts.Limit)
 	page.Entries = slices.Clone(page.Entries)
+	page.Hidden = w.hidden
 	return page, w.seq
 }
 

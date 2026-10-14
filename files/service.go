@@ -114,9 +114,12 @@ func (s *Service) list(path string, opts ListOptions) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	hidden := hiddenCount(entries, opts.IncludeHidden, opts.Filters)
 	entries = filterView(entries, opts.IncludeHidden, opts.Filters)
 	sortEntries(entries, opts.Sort)
-	return pageOf(entries, opts.Cursor, opts.Limit), nil
+	page := pageOf(entries, opts.Cursor, opts.Limit)
+	page.Hidden = hidden
+	return page, nil
 }
 
 func (s *Service) Stat(path string) (Entry, error) {

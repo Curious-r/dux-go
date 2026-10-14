@@ -22,6 +22,7 @@ type ListOptions struct {
 type Page struct {
 	Entries []Entry
 	Total   int
+	Hidden  int
 	Cursor  string
 }
 

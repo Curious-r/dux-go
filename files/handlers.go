@@ -24,6 +24,7 @@ type listResult struct {
 	Seq     int     `json:"seq"`
 	Entries []Entry `json:"entries"`
 	Total   int     `json:"total"`
+	Hidden  int     `json:"hidden"`
 	Cursor  string  `json:"cursor,omitempty"`
 }
 
@@ -81,7 +82,7 @@ func (s *Service) handleList(w *ipc.ConnWriter, req ipc.Request) {
 			return
 		}
 		page, seq := watcher.page(opts)
-		w.Respond(req.ID, listResult{Path: watcher.path, WatchID: id, Seq: seq, Entries: page.Entries, Total: page.Total, Cursor: page.Cursor})
+		w.Respond(req.ID, listResult{Path: watcher.path, WatchID: id, Seq: seq, Entries: page.Entries, Total: page.Total, Hidden: page.Hidden, Cursor: page.Cursor})
 		return
 	}
 
@@ -95,7 +96,7 @@ func (s *Service) handleList(w *ipc.ConnWriter, req ipc.Request) {
 		respondErr(w, req.ID, err)
 		return
 	}
-	w.Respond(req.ID, listResult{Path: path, Entries: page.Entries, Total: page.Total, Cursor: page.Cursor})
+	w.Respond(req.ID, listResult{Path: path, Entries: page.Entries, Total: page.Total, Hidden: page.Hidden, Cursor: page.Cursor})
 }
 
 func (s *Service) handleWatch(ctx context.Context, w *ipc.ConnWriter, req ipc.Request) {
@@ -118,7 +119,7 @@ func (s *Service) handleWatch(ctx context.Context, w *ipc.ConnWriter, req ipc.Re
 
 	page, seq := watcher.page(opts)
 	w.Respond(req.ID, watchResult{
-		listResult:  listResult{Path: path, WatchID: watcher.id, Seq: seq, Entries: page.Entries, Total: page.Total, Cursor: page.Cursor},
+		listResult:  listResult{Path: path, WatchID: watcher.id, Seq: seq, Entries: page.Entries, Total: page.Total, Hidden: page.Hidden, Cursor: page.Cursor},
 		Topic:       watcher.topic,
 		Watching:    watcher.watching,
 		PollOnFocus: watcher.pollOnFocus,
