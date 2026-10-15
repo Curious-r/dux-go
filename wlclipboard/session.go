@@ -88,6 +88,7 @@ func (s *session) Close() {
 		s.registry.Destroy()
 	}
 	s.display.Destroy()
+	_ = s.ctx.Close()
 }
 
 // Available reports whether the compositor supports the data-control

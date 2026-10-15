@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/AvengeMedia/dankgo/wayland/ext_data_control"
 )
@@ -14,6 +15,16 @@ import (
 // ErrNoData reports an empty selection: no client owns the clipboard or the
 // owner advertises no readable mime type.
 var ErrNoData = errors.New("no clipboard data")
+
+// ErrTooLarge reports a selection past MaxPasteBytes.
+var ErrTooLarge = errors.New("clipboard data too large")
+
+// MaxPasteBytes caps what Paste reads into memory; a source that keeps the
+// pipe open past PasteTimeout fails instead of blocking the caller forever.
+var (
+	MaxPasteBytes int64 = 256 << 20
+	PasteTimeout        = 10 * time.Second
+)
 
 type Offer struct {
 	MimeType string
@@ -52,7 +63,15 @@ func TextOffers(text string) []Offer {
 	return ExpandOffers([]byte(text), "text/plain;charset=utf-8")
 }
 
+// Paste reads the selection in the first text type it offers, else an image,
+// else whatever comes first.
 func Paste() ([]byte, string, error) {
+	return PasteSelect(selectPreferredMimeType)
+}
+
+// PasteSelect reads the selection in the type choose picks from the offered
+// list; returning "" declines the selection and reports ErrNoData.
+func PasteSelect(choose func(offered []string) string) ([]byte, string, error) {
 	s, err := connectSession()
 	if err != nil {
 		return nil, "", err
@@ -97,7 +116,7 @@ func Paste() ([]byte, string, error) {
 		return nil, "", ErrNoData
 	}
 
-	selectedMime := selectPreferredMimeType(offerMimeTypes[selectionOffer])
+	selectedMime := choose(offerMimeTypes[selectionOffer])
 	if selectedMime == "" {
 		return nil, "", ErrNoData
 	}
@@ -116,9 +135,13 @@ func Paste() ([]byte, string, error) {
 
 	s.display.Roundtrip()
 
-	data, err := io.ReadAll(r)
-	if err != nil {
+	_ = r.SetReadDeadline(time.Now().Add(PasteTimeout))
+	data, err := io.ReadAll(io.LimitReader(r, MaxPasteBytes+1))
+	switch {
+	case err != nil:
 		return nil, "", fmt.Errorf("read: %w", err)
+	case int64(len(data)) > MaxPasteBytes:
+		return nil, "", ErrTooLarge
 	}
 
 	return data, selectedMime, nil
