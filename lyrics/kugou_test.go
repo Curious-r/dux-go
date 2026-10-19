@@ -40,6 +40,25 @@ func TestKuGouKRC(t *testing.T) {
 	}
 }
 
+func TestKuGouUnescapesHTML(t *testing.T) {
+	parsed, err := decodeKRC(encodeKRC(t, "[0,1000]<0,500,0>I&apos;m <500,500,0>R&amp;B &\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := tidyKuGou(Request{}, parsed)
+	if got.Plain != "I'm R&B &" || got.Synced[0].Words[0].Text != "I'm " {
+		t.Fatalf("got %+v", got)
+	}
+
+	parsed, err = ParseLRC([]byte("[00:06.25]I feel like I&apos;m on the ball today\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tidyKuGou(Request{}, parsed); got.Plain != "I feel like I'm on the ball today" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestKuGouHeaderShapes(t *testing.T) {
 	for _, header := range []string{
 		"",

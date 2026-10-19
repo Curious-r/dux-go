@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"html"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -209,6 +210,7 @@ func tidyKuGou(req Request, parsed *Lyrics) *Lyrics {
 	if len(lines) == 0 {
 		return parsed
 	}
+	unescapeKuGou(lines)
 	if len(lines) == 1 && strings.Contains(lines[0].Text, kugouInstrumental) {
 		return &Lyrics{Instrumental: true}
 	}
@@ -222,6 +224,16 @@ func tidyKuGou(req Request, parsed *Lyrics) *Lyrics {
 		plain[i] = line.Text
 	}
 	return &Lyrics{Synced: lyrics, Plain: strings.Join(plain, "\n")}
+}
+
+// KuGou escapes both krc and lrc bodies as html, "I&apos;m".
+func unescapeKuGou(lines []Line) {
+	for i := range lines {
+		lines[i].Text = html.UnescapeString(lines[i].Text)
+		for j := range lines[i].Words {
+			lines[i].Words[j].Text = html.UnescapeString(lines[i].Words[j].Text)
+		}
+	}
 }
 
 func kugouHeaderLine(text string, first bool) bool {

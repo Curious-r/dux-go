@@ -76,10 +76,10 @@ func New(opts Options) *Client {
 }
 
 // Lookup checks sidecar files, then the cache, then the providers.
-// No lyrics is Found false, not an error.
+// No lyrics is Found false, not an error. No returned text can open an html tag.
 func (c *Client) Lookup(ctx context.Context, req Request) (*Result, error) {
 	if result, ok := fromSidecar(req.FileURL); ok {
-		return result, nil
+		return result.withoutMarkup(), nil
 	}
 	if req.Artist == "" || req.Title == "" {
 		return &Result{}, nil
@@ -118,7 +118,7 @@ func (c *Client) Lookup(ctx context.Context, req Request) (*Result, error) {
 		if response.Err != nil {
 			return nil, response.Err
 		}
-		return response.Val.(*Result), nil
+		return response.Val.(*Result).withoutMarkup(), nil
 	}
 }
 
