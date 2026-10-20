@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 )
 
 type Entry struct {

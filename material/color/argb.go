@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // ARGB represents a 32-bit color in ARGB format (Alpha, Red, Green, Blue)

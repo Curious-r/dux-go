@@ -2,7 +2,7 @@
 
 package color
 
-import "github.com/AvengeMedia/dankgo/material/num"
+import "github.com/duxlabs-dev/dux-go/material/num"
 
 // LinearRGB represents a color in the linear RGB color space.
 //

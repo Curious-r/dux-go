@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/lyrics"
+	"github.com/duxlabs-dev/dux-go/lyrics"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 		req.Album = os.Args[3]
 	}
 
-	client := lyrics.New(lyrics.Options{UserAgent: "dankgo-lyrics-example (+https://github.com/AvengeMedia/dankgo)"})
+	client := lyrics.New(lyrics.Options{UserAgent: "dankgo-lyrics-example (+https://github.com/duxlabs-dev/dux-go)"})
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

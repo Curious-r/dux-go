@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/AvengeMedia/dankgo/log"
+	"github.com/duxlabs-dev/dux-go/log"
 )
 
 type Publisher interface {

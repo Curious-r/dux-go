@@ -1,5 +1,5 @@
 // Package portal provides small clients for the XDG desktop portal
-// interfaces (org.freedesktop.portal.Desktop) used by sandboxed dank apps.
+// interfaces (org.freedesktop.portal.Desktop) used by sandboxed Dux apps.
 package portal
 
 import "os"

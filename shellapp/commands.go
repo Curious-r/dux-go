@@ -3,7 +3,7 @@ package shellapp
 import (
 	"os"
 
-	"github.com/AvengeMedia/dankgo/log"
+	"github.com/duxlabs-dev/dux-go/log"
 	"github.com/spf13/cobra"
 )
 

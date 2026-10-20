@@ -5,7 +5,7 @@ package color
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // ScaledDiscountFromLinRGB is a 3×3 transform matrix that converts

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 )
 
 var mimeappsWriteMu sync.Mutex

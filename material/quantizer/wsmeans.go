@@ -8,7 +8,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 const (

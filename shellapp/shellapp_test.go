@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/ipc"
+	"github.com/duxlabs-dev/dux-go/ipc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ import (
 func testApp(t *testing.T) *App {
 	t.Helper()
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	return New(Config{ID: "danktest", QSAppID: "com.danklinux.danktest", Version: "0.0.1"})
+	return New(Config{ID: "danktest", QSAppID: "dev.duxlabs.danktest", Version: "0.0.1"})
 }
 
 func writeShellDir(t *testing.T) string {
@@ -105,6 +105,26 @@ func TestPIDsIncludesLiveParentFromFilename(t *testing.T) {
 	pids := a.PIDs()
 	assert.Contains(t, pids, os.Getpid())
 	assert.Contains(t, pids, parent)
+}
+
+func TestLegacyIDInstanceIsFound(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("WAYLAND_DISPLAY", "wayland-test")
+	a := New(Config{ID: "danktest", LegacyIDs: []string{"oldtest"}})
+
+	parent := os.Getppid()
+	base := filepath.Join(a.runtimeDir(), fmt.Sprintf("oldtest-%d", parent))
+	require.NoError(t, os.WriteFile(base+".pid", []byte(strconv.Itoa(os.Getpid())), 0o644))
+	require.NoError(t, os.WriteFile(base+".session", []byte("wayland-test"), 0o644))
+	require.NoError(t, os.WriteFile(base+".sock", nil, 0o644))
+
+	assert.Contains(t, a.PIDs(), os.Getpid())
+	pid, ok := a.SessionPID()
+	assert.True(t, ok)
+	assert.Equal(t, os.Getpid(), pid)
+	socket, ok := a.SessionSocketPath()
+	assert.True(t, ok)
+	assert.Equal(t, base+".sock", socket)
 }
 
 func TestResolveConfigCustomPathWins(t *testing.T) {
@@ -191,7 +211,7 @@ func TestBuildUICommandEnv(t *testing.T) {
 	assert.Equal(t, []string{"qs", "-p", "/some/shell"}, cmd.Args)
 	env := strings.Join(cmd.Env, "\n")
 	assert.Contains(t, env, "DANKTEST_SOCKET=/run/danktest-1.sock")
-	assert.Contains(t, env, "QS_APP_ID=com.danklinux.danktest")
+	assert.Contains(t, env, "QS_APP_ID=dev.duxlabs.danktest")
 	assert.Contains(t, env, "DANKTEST_START_HIDDEN=1")
 	assert.Contains(t, env, "QT_QPA_PLATFORM=wayland;xcb")
 	assert.Contains(t, env, "DANKTEST_LOG_LEVEL=debug")

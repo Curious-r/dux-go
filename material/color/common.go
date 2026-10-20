@@ -5,7 +5,7 @@ package color
 import (
 	"fmt"
 
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // Model implements common methods for all colors in this package.

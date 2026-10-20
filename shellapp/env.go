@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/log"
+	"github.com/duxlabs-dev/dux-go/log"
 )
 
 // uiWaitDelay bounds Wait after qs exits: processes qs forks (PAM

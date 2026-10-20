@@ -16,6 +16,17 @@ const (
 
 func (a *App) pidFilePrefix() string { return a.cfg.ID + "-" }
 
+// matchPrefix reports which ID prefix a runtime file name carries, so
+// instances started under a legacy ID are still found.
+func (a *App) matchPrefix(name string) (string, bool) {
+	for _, id := range append([]string{a.cfg.ID}, a.cfg.LegacyIDs...) {
+		if strings.HasPrefix(name, id+"-") {
+			return id + "-", true
+		}
+	}
+	return "", false
+}
+
 func (a *App) pidFilePath() string {
 	return filepath.Join(a.runtimeDir(), fmt.Sprintf("%s%d%s", a.pidFilePrefix(), os.Getpid(), pidFileExtension))
 }
@@ -45,7 +56,7 @@ func (a *App) removeAllPIDFiles() {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, a.pidFilePrefix()) {
+		if _, ok := a.matchPrefix(name); !ok {
 			continue
 		}
 		if strings.HasSuffix(name, pidFileExtension) || strings.HasSuffix(name, sessionFileExtension) {
@@ -67,7 +78,8 @@ func (a *App) PIDs() []int {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, a.pidFilePrefix()) || !strings.HasSuffix(name, pidFileExtension) {
+		prefix, ok := a.matchPrefix(name)
+		if !ok || !strings.HasSuffix(name, pidFileExtension) {
 			continue
 		}
 
@@ -90,7 +102,7 @@ func (a *App) PIDs() []int {
 
 		pids = append(pids, childPID)
 
-		parentPIDStr := strings.TrimSuffix(strings.TrimPrefix(name, a.pidFilePrefix()), pidFileExtension)
+		parentPIDStr := strings.TrimSuffix(strings.TrimPrefix(name, prefix), pidFileExtension)
 		parentPID, err := strconv.Atoi(parentPIDStr)
 		if err != nil {
 			continue
@@ -111,20 +123,21 @@ func processAlive(pid int) bool {
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 
-func (a *App) sessionParentPID(display string) (int, bool) {
+func (a *App) sessionParentPID(display string) (int, string, bool) {
 	if display == "" {
-		return 0, false
+		return 0, "", false
 	}
 
 	dir := a.runtimeDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, a.pidFilePrefix()) || !strings.HasSuffix(name, sessionFileExtension) {
+		prefix, ok := a.matchPrefix(name)
+		if !ok || !strings.HasSuffix(name, sessionFileExtension) {
 			continue
 		}
 
@@ -133,16 +146,16 @@ func (a *App) sessionParentPID(display string) (int, bool) {
 			continue
 		}
 
-		parentStr := strings.TrimSuffix(strings.TrimPrefix(name, a.pidFilePrefix()), sessionFileExtension)
+		parentStr := strings.TrimSuffix(strings.TrimPrefix(name, prefix), sessionFileExtension)
 		parentPID, err := strconv.Atoi(parentStr)
 		if err != nil {
 			continue
 		}
 
-		return parentPID, true
+		return parentPID, prefix, true
 	}
 
-	return 0, false
+	return 0, "", false
 }
 
 func (a *App) firstChildPID() (int, bool) {
@@ -153,7 +166,7 @@ func (a *App) firstChildPID() (int, bool) {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasPrefix(name, a.pidFilePrefix()) || !strings.HasSuffix(name, pidFileExtension) {
+		if _, ok := a.matchPrefix(name); !ok || !strings.HasSuffix(name, pidFileExtension) {
 			continue
 		}
 
@@ -176,12 +189,12 @@ func (a *App) firstChildPID() (int, bool) {
 // sessionUIPID returns the UI child PID for the current WAYLAND_DISPLAY
 // session only, with no cross-session fallback.
 func (a *App) sessionUIPID() (int, bool) {
-	parentPID, ok := a.sessionParentPID(os.Getenv("WAYLAND_DISPLAY"))
+	parentPID, prefix, ok := a.sessionParentPID(os.Getenv("WAYLAND_DISPLAY"))
 	if !ok {
 		return 0, false
 	}
 
-	pidFile := filepath.Join(a.runtimeDir(), fmt.Sprintf("%s%d%s", a.pidFilePrefix(), parentPID, pidFileExtension))
+	pidFile := filepath.Join(a.runtimeDir(), fmt.Sprintf("%s%d%s", prefix, parentPID, pidFileExtension))
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		return 0, false
@@ -207,12 +220,12 @@ func (a *App) SessionPID() (int, bool) {
 // SessionSocketPath returns the backend socket of the instance supervising
 // the current WAYLAND_DISPLAY session.
 func (a *App) SessionSocketPath() (string, bool) {
-	parentPID, ok := a.sessionParentPID(os.Getenv("WAYLAND_DISPLAY"))
+	parentPID, prefix, ok := a.sessionParentPID(os.Getenv("WAYLAND_DISPLAY"))
 	if !ok {
 		return "", false
 	}
 
-	socket := filepath.Join(a.runtimeDir(), fmt.Sprintf("%s%d.sock", a.pidFilePrefix(), parentPID))
+	socket := filepath.Join(a.runtimeDir(), fmt.Sprintf("%s%d.sock", prefix, parentPID))
 	if _, err := os.Stat(socket); err != nil {
 		return "", false
 	}

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 func TestRawTemperature(t *testing.T) {

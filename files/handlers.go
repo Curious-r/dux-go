@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AvengeMedia/dankgo/ipc"
-	"github.com/AvengeMedia/dankgo/ipc/params"
+	"github.com/duxlabs-dev/dux-go/ipc"
+	"github.com/duxlabs-dev/dux-go/ipc/params"
 )
 
 type errorResponse struct {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/AvengeMedia/dankgo/wayland/client"
+	"github.com/duxlabs-dev/dux-go/wayland/client"
 )
 
 // Shows a dispatch loop that will block the goroutine.

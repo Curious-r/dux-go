@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/contrast"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/contrast"
 	"github.com/stretchr/testify/require"
 )
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 	"github.com/spf13/cobra"
 )
 
@@ -27,9 +27,10 @@ type Embedded interface {
 }
 
 type Config struct {
-	ID         string // xdg/socket/pidfile identity, e.g. "dankcal"
-	EnvPrefix  string // default: upper(ID); drives <P>_SOCKET, <P>_SHELL_DIR, <P>_LOG_*
-	QSAppID    string // e.g. "com.danklinux.dankcalendar"
+	ID         string   // xdg/socket/pidfile identity, e.g. "dankcal"
+	LegacyIDs  []string // earlier IDs, still matched when finding a running instance
+	EnvPrefix  string   // default: upper(ID); drives <P>_SOCKET, <P>_SHELL_DIR, <P>_LOG_*
+	QSAppID    string   // e.g. "dev.duxlabs.calendar"
 	Version    string
 	Embedded   Embedded
 	Boot       func(ctx context.Context) (Backend, error)

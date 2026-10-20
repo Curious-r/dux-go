@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/AvengeMedia/dankgo/log"
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/log"
+	"github.com/duxlabs-dev/dux-go/paths"
 	"github.com/spf13/cobra"
 )
 

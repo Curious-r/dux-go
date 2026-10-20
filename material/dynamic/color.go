@@ -5,9 +5,9 @@ package dynamic
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/contrast"
-	"github.com/AvengeMedia/dankgo/material/palettes"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/contrast"
+	"github.com/duxlabs-dev/dux-go/material/palettes"
 )
 
 // TonalPaletteFunc returns a TonalPalette based on the provided Scheme.

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 	"github.com/stretchr/testify/require"
 )
 

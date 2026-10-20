@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/AvengeMedia/dankgo/trash"
+	"github.com/duxlabs-dev/dux-go/trash"
 )
 
 type trashFailure struct {

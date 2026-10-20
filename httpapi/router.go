@@ -3,10 +3,10 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/AvengeMedia/dankgo/errdefs/humaerr"
-	"github.com/AvengeMedia/dankgo/httpapi/middleware"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/duxlabs-dev/dux-go/errdefs/humaerr"
+	"github.com/duxlabs-dev/dux-go/httpapi/middleware"
 	"github.com/go-chi/chi/v5"
 )
 

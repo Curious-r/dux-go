@@ -3,7 +3,7 @@ package dislike
 import (
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 func TestDislikeAnalyzer(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/ipc"
+	"github.com/duxlabs-dev/dux-go/ipc"
 )
 
 const (
@@ -13,7 +13,7 @@ const (
 )
 
 func (a *App) CallUI(method string, params map[string]any) error {
-	socketPath, err := ipc.FindRunningSocket(a.cfg.ID)
+	socketPath, err := ipc.FindRunningSocketAny(append([]string{a.cfg.ID}, a.cfg.LegacyIDs...)...)
 	if err != nil {
 		return err
 	}

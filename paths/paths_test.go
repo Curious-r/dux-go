@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,8 +68,8 @@ func TestSocketDir(t *testing.T) {
 	app := paths.New("dankapp")
 	assert.Equal(t, runtime, app.SocketDir())
 
-	t.Setenv("FLATPAK_ID", "com.danklinux.dankapp")
-	assert.Equal(t, filepath.Join(runtime, "app", "com.danklinux.dankapp"), app.SocketDir())
+	t.Setenv("FLATPAK_ID", "dev.duxlabs.dankapp")
+	assert.Equal(t, filepath.Join(runtime, "app", "dev.duxlabs.dankapp"), app.SocketDir())
 	t.Setenv("FLATPAK_ID", "")
 	os.Unsetenv("FLATPAK_ID")
 

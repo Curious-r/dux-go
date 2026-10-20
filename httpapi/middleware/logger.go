@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/log"
-	"github.com/AvengeMedia/dankgo/netutil"
+	"github.com/duxlabs-dev/dux-go/log"
+	"github.com/duxlabs-dev/dux-go/netutil"
 )
 
 // for defining context keys was copied from Go 1.7's new use of context in net/http.

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 )
 
 const thumbnailerGroup = "[Thumbnailer Entry]"

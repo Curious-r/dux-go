@@ -5,8 +5,8 @@ package contrast
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // RatioOfTones calculates the contrast ratio between two tones. toneA and toneB

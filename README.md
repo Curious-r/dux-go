@@ -1,6 +1,6 @@
 # dankgo
 
-Common Go modules used by DMS & the Dank Linux suite (dankcalendar, dgop, danksearch, and whatever comes next).
+Common Go modules used by DMS & the Dux Labs suite (dankcalendar, dgop, danksearch, and whatever comes next).
 
 Every app in the suite was carrying its own copy of the same logger, unix-socket RPC, chi/huma scaffolding, and XDG path helpers. This is that code, extracted once.
 
@@ -28,7 +28,7 @@ Every app in the suite was carrying its own copy of the same logger, unix-socket
 ## Using it
 
 ```
-go get github.com/AvengeMedia/dankgo@v0.1.0
+go get github.com/duxlabs-dev/dux-go@v0.1.0
 ```
 
 ## Minimal daemon

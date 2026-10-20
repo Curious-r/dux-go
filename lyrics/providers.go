@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const defaultUserAgent = "dankgo-lyrics (+https://github.com/AvengeMedia/dankgo)"
+const defaultUserAgent = "dankgo-lyrics (+https://github.com/duxlabs-dev/dux-go)"
 
 var (
 	errNotFound = errors.New("lyrics not found")

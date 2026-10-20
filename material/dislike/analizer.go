@@ -2,7 +2,7 @@
 
 package dislike
 
-import "github.com/AvengeMedia/dankgo/material/color"
+import "github.com/duxlabs-dev/dux-go/material/color"
 
 // IsDisliked reports whether the color is considered visually unpleasant.
 // Disliked colors are dark yellow-greens with sufficient saturation.

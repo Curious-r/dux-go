@@ -5,7 +5,7 @@ package color
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // Environment encapsulates all constants needed for CAM16 color conversions.

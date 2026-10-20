@@ -2,7 +2,7 @@
 
 package dynamic
 
-import "github.com/AvengeMedia/dankgo/material/num"
+import "github.com/duxlabs-dev/dux-go/material/num"
 
 // ContrastCurve represents a curve that provides contrast values for different
 // contrast levels.

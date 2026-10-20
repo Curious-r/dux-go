@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/wayland/ext_data_control"
+	"github.com/duxlabs-dev/dux-go/wayland/ext_data_control"
 )
 
 type Change struct {

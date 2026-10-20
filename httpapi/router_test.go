@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/AvengeMedia/dankgo/httpapi"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/duxlabs-dev/dux-go/httpapi"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

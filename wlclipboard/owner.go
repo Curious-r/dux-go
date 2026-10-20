@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/AvengeMedia/dankgo/wayland/ext_data_control"
+	"github.com/duxlabs-dev/dux-go/wayland/ext_data_control"
 )
 
 // ErrOwnerClosed reports a Set against an Owner whose connection has been

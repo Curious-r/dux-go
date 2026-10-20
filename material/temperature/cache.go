@@ -6,8 +6,8 @@ import (
 	"math"
 	"slices"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/num"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/num"
 )
 
 // HctMap is map containing Hct hash as key and temperature as value.

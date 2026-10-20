@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/log"
+	"github.com/duxlabs-dev/dux-go/log"
 )
 
 const stderrTailLimit = 8192

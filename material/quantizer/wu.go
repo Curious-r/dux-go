@@ -6,7 +6,7 @@ import (
 	"context"
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 const (

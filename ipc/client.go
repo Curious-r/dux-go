@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/paths"
 )
 
 type Client struct {
@@ -54,6 +54,18 @@ func (c *Client) Call(req Request) (*Response[any], error) {
 }
 
 func (c *Client) Close() error { return c.conn.Close() }
+
+func FindRunningSocketAny(appNames ...string) (string, error) {
+	err := errors.New("no app names given")
+	for _, name := range appNames {
+		var path string
+		path, err = FindRunningSocket(name)
+		if err == nil {
+			return path, nil
+		}
+	}
+	return "", err
+}
 
 func FindRunningSocket(appName string) (string, error) {
 	app := paths.New(appName)

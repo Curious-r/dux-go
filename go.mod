@@ -1,4 +1,4 @@
-module github.com/AvengeMedia/dankgo
+module github.com/duxlabs-dev/dux-go
 
 go 1.27
 

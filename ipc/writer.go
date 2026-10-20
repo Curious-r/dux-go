@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AvengeMedia/dankgo/log"
+	"github.com/duxlabs-dev/dux-go/log"
 )
 
 // A client that has not drained its socket for this long is dead; disconnect

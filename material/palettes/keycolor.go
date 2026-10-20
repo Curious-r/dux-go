@@ -5,7 +5,7 @@ package palettes
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 // KeyColor is a color that represents the hue and chroma of a tonal palette

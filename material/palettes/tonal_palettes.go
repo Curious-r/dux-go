@@ -5,7 +5,7 @@ package palettes
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 // TonalPalette is a convenience type for retrieving colors that are constant in

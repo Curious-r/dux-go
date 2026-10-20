@@ -5,7 +5,7 @@ package quantizer
 import (
 	"context"
 
-	"github.com/AvengeMedia/dankgo/material/color"
+	"github.com/duxlabs-dev/dux-go/material/color"
 )
 
 // QuantizeCelebi seeds QuantizeWsMeans with the result of QuantizeWu, which

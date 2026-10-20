@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AvengeMedia/dankgo/ipc/params"
-	"github.com/AvengeMedia/dankgo/log"
-	"github.com/AvengeMedia/dankgo/paths"
+	"github.com/duxlabs-dev/dux-go/ipc/params"
+	"github.com/duxlabs-dev/dux-go/log"
+	"github.com/duxlabs-dev/dux-go/paths"
 )
 
 const defaultMaxLineSize = 1024 * 1024

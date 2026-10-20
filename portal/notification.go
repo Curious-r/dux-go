@@ -5,7 +5,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/AvengeMedia/dankgo/dbusutil"
+	"github.com/duxlabs-dev/dux-go/dbusutil"
 )
 
 const notificationInterface = "org.freedesktop.portal.Notification"

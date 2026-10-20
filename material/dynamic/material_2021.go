@@ -5,9 +5,9 @@ package dynamic
 import (
 	"math"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/dislike"
-	"github.com/AvengeMedia/dankgo/material/palettes"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/dislike"
+	"github.com/duxlabs-dev/dux-go/material/palettes"
 )
 
 // IsFidelity returns whether the scheme is a fidelity scheme

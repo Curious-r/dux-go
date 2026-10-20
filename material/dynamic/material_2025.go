@@ -5,9 +5,9 @@ package dynamic
 import (
 	"fmt"
 
-	"github.com/AvengeMedia/dankgo/material/color"
-	"github.com/AvengeMedia/dankgo/material/num"
-	"github.com/AvengeMedia/dankgo/material/palettes"
+	"github.com/duxlabs-dev/dux-go/material/color"
+	"github.com/duxlabs-dev/dux-go/material/num"
+	"github.com/duxlabs-dev/dux-go/material/palettes"
 )
 
 // tMaxC
