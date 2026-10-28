@@ -622,3 +622,300 @@ func TestFindTopDirWithMountPoints(t *testing.T) {
 		t.Errorf("findTopDir = %q, want /mnt/disk", top)
 	}
 }
+
+func TestPutSymlinkedParentCrossesMount(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	srcMount := filepath.Join(tmp, "mnt", "external")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{homeMount, srcMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	realDir := filepath.Join(srcMount, "real-project")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatalf("mkdir realDir: %v", err)
+	}
+
+	symlinkDir := filepath.Join(homeRoot, "link-to-project")
+	if err := os.Symlink(realDir, symlinkDir); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	filePath := filepath.Join(symlinkDir, "document.txt")
+	writeFile(t, filePath, "important-payload")
+
+	entry, err := Put(filePath)
+	if err != nil {
+		t.Fatalf("Put via symlink parent: %v", err)
+	}
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedTrashDir := filepath.Join(srcMount, ".Trash-"+uid)
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+
+	expectedRel := "real-project/document.txt"
+	if entry.OriginalPath != expectedRel {
+		t.Errorf("OriginalPath = %q, want %q", entry.OriginalPath, expectedRel)
+	}
+
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Errorf("source still exists at %s", filePath)
+	}
+	realFilePath := filepath.Join(realDir, "document.txt")
+	if _, err := os.Stat(realFilePath); !os.IsNotExist(err) {
+		t.Errorf("real source still exists at %s", realFilePath)
+	}
+
+	infoBody, err := os.ReadFile(entry.InfoPath)
+	if err != nil {
+		t.Fatalf("read info: %v", err)
+	}
+	if !strings.Contains(string(infoBody), "Path=real-project/document.txt\n") {
+		t.Errorf(".trashinfo missing expected Path, got:\n%s", infoBody)
+	}
+
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if content, err := os.ReadFile(filePath); err != nil || string(content) != "important-payload" {
+		t.Errorf("file not restored at symlink path: %q, err: %v", content, err)
+	}
+}
+
+func TestPutSymlinkSourceItem(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	srcMount := filepath.Join(tmp, "mnt", "other")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{homeMount, srcMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	targetFile := filepath.Join(srcMount, "target.txt")
+	writeFile(t, targetFile, "target-content")
+
+	symlinkPath := filepath.Join(homeRoot, "link-to-target")
+	if err := os.Symlink(targetFile, symlinkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	entry, err := Put(symlinkPath)
+	if err != nil {
+		t.Fatalf("Put symlink: %v", err)
+	}
+
+	expectedTrashDir := filepath.Join(xdg, "Trash")
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+
+	linkInfo, err := os.Lstat(entry.FilesPath)
+	if err != nil {
+		t.Fatalf("stat trashed item: %v", err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected trashed item to be a symlink, got mode: %v", linkInfo.Mode())
+	}
+
+	targetContent, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("target was affected: %v", err)
+	}
+	if string(targetContent) != "target-content" {
+		t.Errorf("target content modified: %q", targetContent)
+	}
+
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	restoredInfo, err := os.Lstat(symlinkPath)
+	if err != nil {
+		t.Fatalf("stat restored link: %v", err)
+	}
+	if restoredInfo.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("restored item is not a symlink")
+	}
+	dest, err := os.Readlink(symlinkPath)
+	if err != nil || dest != targetFile {
+		t.Errorf("restored symlink dest = %q, want %q", dest, targetFile)
+	}
+}
+
+func TestPutSymlinkParentNestedMount(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	parentMount := filepath.Join(tmp, "mnt", "volume")
+	nestedMount := filepath.Join(parentMount, "nested")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{homeMount, parentMount, nestedMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	nestedDir := filepath.Join(nestedMount, "dir")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	linkDir := filepath.Join(homeRoot, "link-to-nested")
+	if err := os.Symlink(nestedDir, linkDir); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	file := filepath.Join(linkDir, "item.txt")
+	writeFile(t, file, "nested-data")
+
+	entry, err := Put(file)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedTrashDir := filepath.Join(nestedMount, ".Trash-"+uid)
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q (deepest matching mount)", entry.TrashDir, expectedTrashDir)
+	}
+	if entry.OriginalPath != "dir/item.txt" {
+		t.Errorf("OriginalPath = %q, want %q", entry.OriginalPath, "dir/item.txt")
+	}
+
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if content, err := os.ReadFile(file); err != nil || string(content) != "nested-data" {
+		t.Errorf("file not restored: %q, err: %v", content, err)
+	}
+}
+
+func TestMountInfoFallbackCombinations(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	srcMount := filepath.Join(tmp, "mnt", "src")
+	unrelatedMount := filepath.Join(tmp, "unrelated")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	srcFile := filepath.Join(srcMount, "file.txt")
+	writeFile(t, srcFile, "data")
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedHomeTrash := filepath.Join(xdg, "Trash")
+	expectedSrcTrash := filepath.Join(srcMount, ".Trash-"+uid)
+
+	t.Run("srcFound_and_not_homeFound", func(t *testing.T) {
+		prev := mountPoints
+		mountPoints = func() []string {
+			return []string{srcMount}
+		}
+		t.Cleanup(func() { mountPoints = prev })
+
+		td, sp, err := trashDirForPath(srcFile)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if td != expectedSrcTrash {
+			t.Errorf("trashDir = %q, want %q", td, expectedSrcTrash)
+		}
+		if sp != "file.txt" {
+			t.Errorf("storedPath = %q, want file.txt", sp)
+		}
+	})
+
+	t.Run("not_srcFound_and_homeFound", func(t *testing.T) {
+		prev := mountPoints
+		mountPoints = func() []string {
+			return []string{homeMount}
+		}
+		t.Cleanup(func() { mountPoints = prev })
+
+		td, _, err := trashDirForPath(srcFile)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		// Because homeMount is known and srcFile is NOT in homeMount,
+		// it must NOT use Home Trash even though st_dev matches.
+		if td == expectedHomeTrash {
+			t.Errorf("selected Home Trash despite mount info proving paths do not share a mount")
+		}
+	})
+
+	t.Run("neither_found_with_nonempty_mounts", func(t *testing.T) {
+		prev := mountPoints
+		mountPoints = func() []string {
+			return []string{unrelatedMount}
+		}
+		t.Cleanup(func() { mountPoints = prev })
+
+		td, _, err := trashDirForPath(srcFile)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		// Degraded mount info does not establish same mount; must NOT use Home Trash.
+		if td == expectedHomeTrash {
+			t.Errorf("selected Home Trash despite mount info not establishing a shared mount")
+		}
+	})
+
+	t.Run("mount_info_unavailable_len_zero", func(t *testing.T) {
+		prev := mountPoints
+		mountPoints = func() []string {
+			return nil
+		}
+		t.Cleanup(func() { mountPoints = prev })
+
+		td, _, err := trashDirForPath(srcFile)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		// Completely unavailable mount info falls back to st_dev equality -> Home Trash.
+		if td != expectedHomeTrash {
+			t.Errorf("trashDir = %q, want %q on unavailable mount info fallback", td, expectedHomeTrash)
+		}
+	})
+}
+
+func TestEffectiveEntryPathErrorOnNonExistentParent(t *testing.T) {
+	nonExistent := filepath.Join(t.TempDir(), "no-such-dir", "file.txt")
+	_, _, err := trashDirForPath(nonExistent)
+	if err == nil {
+		t.Fatalf("expected error for non-existent parent directory, got nil")
+	}
+}

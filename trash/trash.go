@@ -68,6 +68,39 @@ func fsDeviceWalkUp(start string) (uint64, error) {
 	}
 }
 
+// effectiveEntryPath returns the path of absPath with its parent directory
+// resolved via filepath.EvalSymlinks. The basename itself is preserved without
+// symlink evaluation so that symlinks being trashed are not dereferenced.
+func effectiveEntryPath(absPath string) (string, error) {
+	parent := filepath.Dir(absPath)
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return "", fmt.Errorf("resolve parent directory %q: %w", parent, err)
+	}
+	return filepath.Join(resolvedParent, filepath.Base(absPath)), nil
+}
+
+// resolveExistingAncestors resolves symbolic links in the deepest existing ancestor
+// of path and appends any remaining path components.
+func resolveExistingAncestors(p string) string {
+	cur := filepath.Clean(p)
+	var tail []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
+}
+
 func effectiveMountPoint(path string, mounts []string) (string, bool) {
 	if len(mounts) == 0 {
 		return "", false
@@ -101,14 +134,18 @@ func findTopDir(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if m, ok := effectiveMountPoint(abs, mountPoints()); ok {
+	eff, err := effectiveEntryPath(abs)
+	if err != nil {
+		eff = abs
+	}
+	if m, ok := effectiveMountPoint(eff, mountPoints()); ok {
 		return m, nil
 	}
-	dev, err := fsDevice(abs)
+	dev, err := fsDevice(eff)
 	if err != nil {
 		return "", err
 	}
-	cur := abs
+	cur := eff
 	for {
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -159,57 +196,78 @@ func mountTrashDir(topDir, absPath string) (string, string) {
 // to store in the .trashinfo Path field (absolute for home, relative-to-topdir
 // for per-mountpoint trash).
 func trashDirForPath(absPath string) (trashDir string, storedPath string, err error) {
+	effPath, err := effectiveEntryPath(absPath)
+	if err != nil {
+		return "", "", err
+	}
+
 	home, err := homeTrashDir()
 	if err != nil {
 		return "", "", err
 	}
+	effHome := resolveExistingAncestors(home)
 
 	mounts := mountPoints()
 
-	srcMount, srcFound := effectiveMountPoint(absPath, mounts)
-	homeMount, homeFound := effectiveMountPoint(home, mounts)
+	srcMount, srcFound := effectiveMountPoint(effPath, mounts)
+	homeMount, homeFound := effectiveMountPoint(effHome, mounts)
 
-	if srcFound && homeFound {
-		if srcMount == homeMount {
-			pathDev, pathErr := fsDevice(absPath)
-			homeDev, homeErr := fsDeviceWalkUp(home)
-			if pathErr == nil && homeErr == nil && pathDev != homeDev {
-				topDir, terr := findTopDir(absPath)
-				if terr != nil {
-					return "", "", terr
-				}
-				td, sp := mountTrashDir(topDir, absPath)
-				return td, sp, nil
-			}
-			return home, absPath, nil
+	if len(mounts) == 0 {
+		// Mount information is completely unavailable (e.g. non-Linux platform
+		// or unreadable /proc/self/mountinfo). Fall back to device boundary checks.
+		pathDev, err := fsDevice(effPath)
+		if err != nil {
+			return "", "", err
 		}
-		td, sp := mountTrashDir(srcMount, absPath)
+		homeDev, err := fsDeviceWalkUp(home)
+		if err != nil {
+			return "", "", err
+		}
+
+		if pathDev == homeDev {
+			return home, effPath, nil
+		}
+
+		topDir, err := findTopDir(effPath)
+		if err != nil {
+			return "", "", err
+		}
+		td, sp := mountTrashDir(topDir, effPath)
 		return td, sp, nil
 	}
 
-	if srcFound && !homeFound {
-		td, sp := mountTrashDir(srcMount, absPath)
+	// Mount information is available.
+	if srcFound && homeFound && srcMount == homeMount {
+		// Both paths reliably map to the same mount.
+		// Verify device numbers as an additional safeguard.
+		pathDev, pathErr := fsDevice(effPath)
+		homeDev, homeErr := fsDeviceWalkUp(home)
+		if pathErr == nil && homeErr == nil && pathDev != homeDev {
+			topDir, terr := findTopDir(effPath)
+			if terr != nil {
+				return "", "", terr
+			}
+			td, sp := mountTrashDir(topDir, effPath)
+			return td, sp, nil
+		}
+		return home, effPath, nil
+	}
+
+	if srcFound {
+		// Source mount is known and differs from Home Trash's mount (or Home Trash mount is unknown).
+		td, sp := mountTrashDir(srcMount, effPath)
 		return td, sp, nil
 	}
 
-	pathDev, err := fsDevice(absPath)
+	// Degraded mount-information case: mount info is non-empty, but the source
+	// path did not match any known mount point. Because mount information does not
+	// establish that both paths share a mount, do not rely on st_dev equality alone
+	// to use Home Trash. Fall back to walking up the source device boundary.
+	topDir, err := findTopDir(effPath)
 	if err != nil {
 		return "", "", err
 	}
-	homeDev, err := fsDeviceWalkUp(home)
-	if err != nil {
-		return "", "", err
-	}
-
-	if pathDev == homeDev && !homeFound {
-		return home, absPath, nil
-	}
-
-	topDir, err := findTopDir(absPath)
-	if err != nil {
-		return "", "", err
-	}
-	td, sp := mountTrashDir(topDir, absPath)
+	td, sp := mountTrashDir(topDir, effPath)
 	return td, sp, nil
 }
 
