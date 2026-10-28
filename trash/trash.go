@@ -68,10 +68,41 @@ func fsDeviceWalkUp(start string) (uint64, error) {
 	}
 }
 
+func effectiveMountPoint(path string, mounts []string) (string, bool) {
+	if len(mounts) == 0 {
+		return "", false
+	}
+	cleanPath := filepath.Clean(path)
+	var best string
+	var found bool
+	for _, m := range mounts {
+		cleanM := filepath.Clean(m)
+		if cleanM == "" {
+			continue
+		}
+		var matches bool
+		if cleanM == "/" {
+			matches = strings.HasPrefix(cleanPath, "/")
+		} else {
+			matches = cleanPath == cleanM || strings.HasPrefix(cleanPath, cleanM+"/")
+		}
+		if matches {
+			if !found || len(cleanM) > len(best) {
+				best = cleanM
+				found = true
+			}
+		}
+	}
+	return best, found
+}
+
 func findTopDir(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
+	}
+	if m, ok := effectiveMountPoint(abs, mountPoints()); ok {
+		return m, nil
 	}
 	dev, err := fsDevice(abs)
 	if err != nil {
@@ -110,6 +141,20 @@ func isValidSharedTrash(p string) bool {
 	return info.Mode()&os.ModeSticky != 0
 }
 
+func mountTrashDir(topDir, absPath string) (string, string) {
+	uid := strconv.Itoa(os.Getuid())
+	stored, rerr := filepath.Rel(topDir, absPath)
+	if rerr != nil || stored == "." || strings.HasPrefix(stored, "..") {
+		stored = absPath
+	}
+
+	shared := filepath.Join(topDir, ".Trash")
+	if isValidSharedTrash(shared) {
+		return filepath.Join(shared, uid), stored
+	}
+	return filepath.Join(topDir, ".Trash-"+uid), stored
+}
+
 // trashDirForPath chooses the correct trash dir per spec and returns the value
 // to store in the .trashinfo Path field (absolute for home, relative-to-topdir
 // for per-mountpoint trash).
@@ -117,6 +162,34 @@ func trashDirForPath(absPath string) (trashDir string, storedPath string, err er
 	home, err := homeTrashDir()
 	if err != nil {
 		return "", "", err
+	}
+
+	mounts := mountPoints()
+
+	srcMount, srcFound := effectiveMountPoint(absPath, mounts)
+	homeMount, homeFound := effectiveMountPoint(home, mounts)
+
+	if srcFound && homeFound {
+		if srcMount == homeMount {
+			pathDev, pathErr := fsDevice(absPath)
+			homeDev, homeErr := fsDeviceWalkUp(home)
+			if pathErr == nil && homeErr == nil && pathDev != homeDev {
+				topDir, terr := findTopDir(absPath)
+				if terr != nil {
+					return "", "", terr
+				}
+				td, sp := mountTrashDir(topDir, absPath)
+				return td, sp, nil
+			}
+			return home, absPath, nil
+		}
+		td, sp := mountTrashDir(srcMount, absPath)
+		return td, sp, nil
+	}
+
+	if srcFound && !homeFound {
+		td, sp := mountTrashDir(srcMount, absPath)
+		return td, sp, nil
 	}
 
 	pathDev, err := fsDevice(absPath)
@@ -128,7 +201,7 @@ func trashDirForPath(absPath string) (trashDir string, storedPath string, err er
 		return "", "", err
 	}
 
-	if pathDev == homeDev {
+	if pathDev == homeDev && !homeFound {
 		return home, absPath, nil
 	}
 
@@ -136,18 +209,8 @@ func trashDirForPath(absPath string) (trashDir string, storedPath string, err er
 	if err != nil {
 		return "", "", err
 	}
-
-	uid := strconv.Itoa(os.Getuid())
-	stored, rerr := filepath.Rel(topDir, absPath)
-	if rerr != nil || strings.HasPrefix(stored, "..") {
-		stored = absPath
-	}
-
-	shared := filepath.Join(topDir, ".Trash")
-	if isValidSharedTrash(shared) {
-		return filepath.Join(shared, uid), stored, nil
-	}
-	return filepath.Join(topDir, ".Trash-"+uid), stored, nil
+	td, sp := mountTrashDir(topDir, absPath)
+	return td, sp, nil
 }
 
 // uniqueName returns a basename in trashDir that does not collide with an
@@ -285,7 +348,7 @@ func skipFsType(fsType string) bool {
 }
 
 func skipMountPoint(mp string, seen map[string]bool) bool {
-	if mp == "/" || seen[mp] {
+	if mp == "" || seen[mp] {
 		return true
 	}
 	for _, p := range []string{"/proc", "/sys", "/dev"} {

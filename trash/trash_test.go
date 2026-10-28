@@ -3,6 +3,7 @@ package trash
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -318,5 +319,306 @@ func TestPathEncodeRoundTrip(t *testing.T) {
 		if got != in {
 			t.Errorf("round-trip %q -> %q", in, got)
 		}
+	}
+}
+
+func TestEffectiveMountPoint(t *testing.T) {
+	mounts := []string{
+		"/",
+		"/mnt/data",
+		"/mnt/data/nested",
+		"/mnt/data/nested/deep",
+		"/run/media/user/USB Drive",
+	}
+
+	cases := []struct {
+		path      string
+		wantMount string
+		wantFound bool
+	}{
+		{"/mnt/data/nested/deep/file.txt", "/mnt/data/nested/deep", true},
+		{"/mnt/data/nested/deep", "/mnt/data/nested/deep", true},
+		{"/mnt/data/nested/file.txt", "/mnt/data/nested", true},
+		{"/mnt/data/file.txt", "/mnt/data", true},
+		{"/mnt/data-other/file.txt", "/", true},
+		{"/mnt/data2", "/", true},
+		{"/etc/hosts", "/", true},
+		{"/", "/", true},
+		{"/run/media/user/USB Drive/doc.txt", "/run/media/user/USB Drive", true},
+	}
+
+	for _, tc := range cases {
+		gotMount, gotFound := effectiveMountPoint(tc.path, mounts)
+		if gotFound != tc.wantFound || gotMount != tc.wantMount {
+			t.Errorf("effectiveMountPoint(%q) = (%q, %v), want (%q, %v)",
+				tc.path, gotMount, gotFound, tc.wantMount, tc.wantFound)
+		}
+	}
+
+	// Without root mount in list
+	subset := []string{"/mnt/data", "/mnt/data/nested"}
+	if m, ok := effectiveMountPoint("/home/user/file.txt", subset); ok {
+		t.Errorf("expected not found, got %q", m)
+	}
+	if m, ok := effectiveMountPoint("/mnt/data/file.txt", subset); !ok || m != "/mnt/data" {
+		t.Errorf("expected /mnt/data, got (%q, %v)", m, ok)
+	}
+
+	// Empty mounts
+	if m, ok := effectiveMountPoint("/any/path", nil); ok {
+		t.Errorf("expected not found for empty mounts, got %q", m)
+	}
+}
+
+func TestPutAcrossDistinctMountsSameStDev(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	srcMount := filepath.Join(tmp, "mnt", "btrfs-subvol")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{homeMount, srcMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	// Both paths reside in tmp and have the same st_dev.
+	src := filepath.Join(srcMount, "sub folder", "my doc & %1.txt")
+	writeFile(t, src, "content-for-trash")
+
+	homeDev, err := fsDeviceWalkUp(filepath.Join(xdg, "Trash"))
+	if err != nil {
+		t.Fatalf("home fsDevice: %v", err)
+	}
+	srcDev, err := fsDevice(src)
+	if err != nil {
+		t.Fatalf("src fsDevice: %v", err)
+	}
+	if homeDev != srcDev {
+		t.Fatalf("test prerequisite failed: st_dev differs (%d vs %d)", homeDev, srcDev)
+	}
+
+	entry, err := Put(src)
+	if err != nil {
+		t.Fatalf("Put across mounts: %v", err)
+	}
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedTrashDir := filepath.Join(srcMount, ".Trash-"+uid)
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("entry.TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+
+	expectedRel := "sub folder/my doc & %1.txt"
+	if entry.OriginalPath != expectedRel {
+		t.Errorf("entry.OriginalPath = %q, want %q", entry.OriginalPath, expectedRel)
+	}
+
+	// Verify file was moved out of original location
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Errorf("source still exists at %s", src)
+	}
+
+	// Verify content in trash
+	body, err := os.ReadFile(entry.FilesPath)
+	if err != nil {
+		t.Fatalf("read trashed file: %v", err)
+	}
+	if string(body) != "content-for-trash" {
+		t.Errorf("trashed content = %q, want %q", body, "content-for-trash")
+	}
+
+	// Verify .trashinfo path encoding preserves '/' and relative path, and percent-encodes spaces and '%'
+	infoBody, err := os.ReadFile(entry.InfoPath)
+	if err != nil {
+		t.Fatalf("read info: %v", err)
+	}
+	wantPathLine := "Path=sub%20folder/my%20doc%20&%20%251.txt\n"
+	if !strings.Contains(string(infoBody), wantPathLine) {
+		t.Errorf("expected %q in .trashinfo, got:\n%s", wantPathLine, infoBody)
+	}
+
+	// Verify Restore restores back to original location
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	restoredBody, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read restored: %v", err)
+	}
+	if string(restoredBody) != "content-for-trash" {
+		t.Errorf("restored content = %q", restoredBody)
+	}
+}
+
+func TestPutAcrossDistinctMountsSharedTrashSticky(t *testing.T) {
+	tmp := t.TempDir()
+	homeMount := filepath.Join(tmp, "home")
+	srcMount := filepath.Join(tmp, "mnt", "volume")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	// Create valid shared trash $topdir/.Trash with sticky bit
+	sharedTrash := filepath.Join(srcMount, ".Trash")
+	if err := os.MkdirAll(sharedTrash, os.ModeSticky|0o777); err != nil {
+		t.Fatalf("mkdir shared trash: %v", err)
+	}
+	// os.MkdirAll does not set sticky bit on existing dirs, ensure chmod
+	if err := os.Chmod(sharedTrash, os.ModeSticky|0o777); err != nil {
+		t.Fatalf("chmod sticky: %v", err)
+	}
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{homeMount, srcMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	src := filepath.Join(srcMount, "file.txt")
+	writeFile(t, src, "shared-data")
+
+	entry, err := Put(src)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedTrashDir := filepath.Join(srcMount, ".Trash", uid)
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+	if entry.OriginalPath != "file.txt" {
+		t.Errorf("OriginalPath = %q, want %q", entry.OriginalPath, "file.txt")
+	}
+
+	// Restore
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if b, _ := os.ReadFile(src); string(b) != "shared-data" {
+		t.Errorf("restored content mismatch: %q", b)
+	}
+}
+
+func TestPutSameMountPreservesHomeTrash(t *testing.T) {
+	tmp := t.TempDir()
+	mountRoot := filepath.Join(tmp, "sharedmount")
+	homeRoot := filepath.Join(mountRoot, "home", "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{mountRoot}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	src := filepath.Join(mountRoot, "otherdir", "doc.txt")
+	writeFile(t, src, "same-mount-data")
+
+	entry, err := Put(src)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	expectedTrashDir := filepath.Join(xdg, "Trash")
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+	if entry.OriginalPath != src {
+		t.Errorf("OriginalPath = %q, want absolute path %q", entry.OriginalPath, src)
+	}
+
+	infoBody, err := os.ReadFile(entry.InfoPath)
+	if err != nil {
+		t.Fatalf("read info: %v", err)
+	}
+	if !strings.Contains(string(infoBody), "Path="+src+"\n") {
+		t.Errorf("expected absolute path in info, got:\n%s", infoBody)
+	}
+}
+
+func TestPutRootMountHandling(t *testing.T) {
+	tmp := t.TempDir()
+	rootMount := filepath.Join(tmp, "rootfs")
+	homeMount := filepath.Join(tmp, "home")
+
+	homeRoot := filepath.Join(homeMount, "user")
+	xdg := filepath.Join(homeRoot, ".local", "share")
+	if err := os.MkdirAll(xdg, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("XDG_DATA_HOME", xdg)
+	t.Setenv("HOME", homeRoot)
+
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{rootMount, homeMount}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	src := filepath.Join(rootMount, "etc", "test.conf")
+	writeFile(t, src, "conf-content")
+
+	entry, err := Put(src)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	uid := strconv.Itoa(os.Getuid())
+	expectedTrashDir := filepath.Join(rootMount, ".Trash-"+uid)
+	if entry.TrashDir != expectedTrashDir {
+		t.Errorf("TrashDir = %q, want %q", entry.TrashDir, expectedTrashDir)
+	}
+	if entry.OriginalPath != "etc/test.conf" {
+		t.Errorf("OriginalPath = %q, want etc/test.conf", entry.OriginalPath)
+	}
+
+	if err := Restore(entry.Name, entry.TrashDir); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if b, _ := os.ReadFile(src); string(b) != "conf-content" {
+		t.Errorf("restored content = %q", b)
+	}
+}
+
+func TestFindTopDirWithMountPoints(t *testing.T) {
+	prev := mountPoints
+	mountPoints = func() []string {
+		return []string{"/mnt/disk", "/mnt/disk/nested"}
+	}
+	t.Cleanup(func() { mountPoints = prev })
+
+	top, err := findTopDir("/mnt/disk/nested/a/b/file.txt")
+	if err != nil {
+		t.Fatalf("findTopDir: %v", err)
+	}
+	if top != "/mnt/disk/nested" {
+		t.Errorf("findTopDir = %q, want /mnt/disk/nested", top)
+	}
+
+	top, err = findTopDir("/mnt/disk/other/file.txt")
+	if err != nil {
+		t.Fatalf("findTopDir: %v", err)
+	}
+	if top != "/mnt/disk" {
+		t.Errorf("findTopDir = %q, want /mnt/disk", top)
 	}
 }
