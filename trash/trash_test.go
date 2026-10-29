@@ -840,6 +840,12 @@ func TestMountInfoFallbackCombinations(t *testing.T) {
 	expectedHomeTrash := filepath.Join(xdg, "Trash")
 	expectedSrcTrash := filepath.Join(srcMount, ".Trash-"+uid)
 
+	// mockSameDevice simulates a uniform device across the entire filesystem,
+	// ensuring device-boundary traversal reaches '/' deterministically.
+	mockSameDevice := func(p string) (uint64, error) {
+		return 100, nil
+	}
+
 	t.Run("srcFound_and_not_homeFound", func(t *testing.T) {
 		prev := mountPoints
 		mountPoints = func() []string {
@@ -866,14 +872,15 @@ func TestMountInfoFallbackCombinations(t *testing.T) {
 		}
 		t.Cleanup(func() { mountPoints = prev })
 
-		td, _, err := trashDirForPath(srcFile)
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
-		}
+		td, _, err := trashDirForPathWithLookup(srcFile, mockSameDevice)
 		// Because homeMount is known and srcFile is NOT in homeMount,
-		// it must NOT use Home Trash even though st_dev matches.
-		if td == expectedHomeTrash {
-			t.Errorf("selected Home Trash despite mount info proving paths do not share a mount")
+		// degraded fallback reaches '/' and must return an error rather than
+		// silently selecting root-level trash or Home Trash.
+		if err == nil {
+			t.Fatalf("expected error when degraded fallback reaches root, got trashDir=%q", td)
+		}
+		if _, err := putWithLookup(srcFile, mockSameDevice); err == nil {
+			t.Fatalf("Put: expected error when degraded fallback reaches root, got nil")
 		}
 	})
 
@@ -884,13 +891,56 @@ func TestMountInfoFallbackCombinations(t *testing.T) {
 		}
 		t.Cleanup(func() { mountPoints = prev })
 
-		td, _, err := trashDirForPath(srcFile)
-		if err != nil {
-			t.Fatalf("unexpected err: %v", err)
+		td, _, err := trashDirForPathWithLookup(srcFile, mockSameDevice)
+		// Degraded mount info does not establish same mount; fallback reaching '/'
+		// must return an error rather than selecting '/.Trash-<uid>' or '/.Trash/<uid>'.
+		if err == nil {
+			t.Fatalf("expected error when degraded fallback reaches root, got trashDir=%q", td)
 		}
-		// Degraded mount info does not establish same mount; must NOT use Home Trash.
-		if td == expectedHomeTrash {
-			t.Errorf("selected Home Trash despite mount info not establishing a shared mount")
+		if td == expectedHomeTrash || strings.HasPrefix(td, "/.Trash") {
+			t.Errorf("unexpected root or home trash selected: %q", td)
+		}
+		if _, err := putWithLookup(srcFile, mockSameDevice); err == nil {
+			t.Fatalf("Put: expected error when degraded fallback reaches root, got nil")
+		}
+	})
+
+	t.Run("degraded_fallback_stops_at_non_root_boundary", func(t *testing.T) {
+		prev := mountPoints
+		mountPoints = func() []string {
+			return []string{homeMount}
+		}
+		t.Cleanup(func() { mountPoints = prev })
+
+		nonRootBoundary := filepath.Clean(srcMount)
+		mockBoundaryDevice := func(p string) (uint64, error) {
+			cleanP := filepath.Clean(p)
+			if cleanP == nonRootBoundary || strings.HasPrefix(cleanP, nonRootBoundary+"/") {
+				return 200, nil
+			}
+			return 100, nil
+		}
+
+		td, sp, err := trashDirForPathWithLookup(srcFile, mockBoundaryDevice)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if td != expectedSrcTrash {
+			t.Errorf("trashDir = %q, want %q", td, expectedSrcTrash)
+		}
+		if sp != "file.txt" {
+			t.Errorf("storedPath = %q, want file.txt", sp)
+		}
+
+		entry, err := putWithLookup(srcFile, mockBoundaryDevice)
+		if err != nil {
+			t.Fatalf("putWithLookup: %v", err)
+		}
+		if entry.TrashDir != expectedSrcTrash {
+			t.Errorf("entry.TrashDir = %q, want %q", entry.TrashDir, expectedSrcTrash)
+		}
+		if err := Restore(entry.Name, entry.TrashDir); err != nil {
+			t.Fatalf("Restore: %v", err)
 		}
 	})
 
@@ -901,7 +951,7 @@ func TestMountInfoFallbackCombinations(t *testing.T) {
 		}
 		t.Cleanup(func() { mountPoints = prev })
 
-		td, _, err := trashDirForPath(srcFile)
+		td, _, err := trashDirForPathWithLookup(srcFile, mockSameDevice)
 		if err != nil {
 			t.Fatalf("unexpected err: %v", err)
 		}
@@ -910,6 +960,34 @@ func TestMountInfoFallbackCombinations(t *testing.T) {
 			t.Errorf("trashDir = %q, want %q on unavailable mount info fallback", td, expectedHomeTrash)
 		}
 	})
+}
+
+func TestWalkDeviceBoundaryDeterministic(t *testing.T) {
+	// Root reached when all devices are identical
+	mockUniform := func(p string) (uint64, error) { return 1, nil }
+	top, err := walkDeviceBoundary("/a/b/c/d", mockUniform)
+	if err != nil {
+		t.Fatalf("walkDeviceBoundary: %v", err)
+	}
+	if top != "/" {
+		t.Errorf("top = %q, want /", top)
+	}
+
+	// Boundary reached where device changes
+	mockBoundary := func(p string) (uint64, error) {
+		clean := filepath.Clean(p)
+		if clean == "/a/b" || strings.HasPrefix(clean, "/a/b/") {
+			return 2, nil
+		}
+		return 1, nil
+	}
+	top, err = walkDeviceBoundary("/a/b/c/d", mockBoundary)
+	if err != nil {
+		t.Fatalf("walkDeviceBoundary: %v", err)
+	}
+	if top != "/a/b" {
+		t.Errorf("top = %q, want /a/b", top)
+	}
 }
 
 func TestEffectiveEntryPathErrorOnNonExistentParent(t *testing.T) {
